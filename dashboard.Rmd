@@ -567,7 +567,7 @@ dataset_evo %>%
     y = ~ Recovered, 
             name = 'Recovered', 
             fillcolor = 'forestgreen') %>%
-  layout(title = "Italy - Distribution of Covid19 Cases",
+  layout(title = "Europe - Distribution of Covid19 Cases",
          legend = list(x = 0.1, y = 0.9),
          yaxis = list(title = "Number of Cases"))
 ```
