@@ -427,7 +427,8 @@ dataset_evo_daily %>%
 summary <- dataset_evo %>% 
   filter(Date == max(Date)) %>%
   mutate(recover_rate = Recovered/Confirmed,
-         death_rate = Death/Confirmed)  
+         death_rate = Death/Confirmed) %>% 
+  select(-c(Continent, Active))
 summary %>%
   DT::datatable(rownames = FALSE,
             colnames = c("Country", "Confirmed", "Recovered", "Death", "Recovery Rate", "Death Rate"),
