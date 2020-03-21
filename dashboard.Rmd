@@ -1,0 +1,1130 @@
+---
+title: "Coronavirus"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+    vertical_layout: fill
+---
+
+
+```{r setup, include=FALSE}
+#------------------ Packages ------------------
+library(readr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(sp)
+library(rworldmap)
+library(plotly)
+library(flexdashboard)
+
+#------------------ Data ------------------
+
+## get confirmed cases
+
+confirmed <- read_csv(file = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv")
+
+## get death cases
+
+death <- read_csv(file = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv")
+
+## get recovered cases
+
+recovered <- read_csv(file = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Recovered.csv")
+
+## temperatures
+
+temperature_max <- read_csv('https://raw.githubusercontent.com/imantsm/COVID-19/master/csv/tMax.csv')
+
+temperature_min <- read_csv('https://raw.githubusercontent.com/imantsm/COVID-19/master/csv/tMin.csv')  
+
+#------------------ Data Treatment ------------------
+
+# The single argument to this function, points, is a data.frame in which:
+#   - column 1 contains the longitude in degrees
+#   - column 2 contains the latitude in degrees
+coords2continent = function(points)
+{  
+  countriesSP <- getMap(resolution='low')
+  # converting points to a SpatialPoints object
+  # setting CRS directly to that from rworldmap
+  pointsSP = SpatialPoints(points, proj4string=CRS(proj4string(countriesSP)))  
+  # use 'over' to get indices of the Polygons object containing each point 
+  indices = over(pointsSP, countriesSP)
+
+  indices$REGION   # returns the continent (7 continent model)
+
+}
+
+confirmed <- confirmed %>% 
+  ## convert the dataset from wide to long
+  pivot_longer(., cols = 5:ncol(confirmed), names_to = "Date", values_to = "Confirmed") %>% 
+  ## correct portugal values
+  mutate(
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/2/20"),2,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/3/20"),4,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/4/20"),6,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/5/20"),9,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/6/20"),13,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/7/20"),21,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/8/20"),30,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/9/20"),39,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/10/20"),41,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/11/20"),59,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/12/20"),78,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/13/20"),112,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/14/20"),169,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Portugal") & (Date == "3/18/20"),642,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Italy") & (Date == "3/12/20"),15113,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Spain") & (Date == "3/12/20"),3146,Confirmed),
+    Confirmed = if_else((`Country/Region`=="France") & (`Province/State`=="France") & (Date == "3/12/20"),2876,Confirmed),
+    Confirmed = if_else((`Country/Region`=="France") & (`Province/State`=="France") & (Date == "3/15/20"),5423,Confirmed),
+    Confirmed = if_else((`Country/Region`=="United Kingdom") & (`Province/State`=="United Kingdom") & (Date == "3/12/20"),590,Confirmed),
+    Confirmed = if_else((`Country/Region`=="Germany") & (Date == "3/12/20"),2745,Confirmed)
+  ) %>% 
+  ## Convert the date column to a date format
+  mutate(Date = mdy(Date)) %>% 
+  rename(
+    State = `Province/State`,
+    Country = `Country/Region`
+  ) %>% 
+  group_by(Country, State) %>% 
+  arrange(Date) %>% 
+  mutate(
+    Confirmed_day = Confirmed - lag(Confirmed, default = 0),
+    Continent = coords2continent(data.frame(lon=c(Long), lat=c(Lat)))) %>% 
+  ungroup() %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(
+    Continent = if_else(Country=="Australia","Australia",Continent),
+    Continent = if_else(Country=="Canada","North America",Continent),
+    Continent = if_else(Country=="China","Asia",Continent),
+    Continent = if_else(Country=="Denmark","Europe",Continent),
+    Continent = if_else(Country=="France","Europe",Continent),
+    Continent = if_else(Country=="Netherlands","Europe",Continent),
+    Continent = if_else(Country=="United Kingdom","Europe",Continent),
+    Continent = if_else(Country=="US","North America",Continent),
+    Continent = if_else(Country=="Monaco","Europe",Continent),
+    Continent = if_else(Country=="Philippines","Asia",Continent),
+    Continent = if_else(Country=="New Zealand","Europe",Continent),
+    Continent = if_else(Country=="Saint Vincent and the Grenadine","North America",Continent)
+         ) %>%
+  select(Continent, State, Country, Lat, Long, Date, Confirmed, Confirmed_day) %>% 
+  arrange(State, Continent, Country, Date) %>%
+  data.frame()
+
+
+death <- death %>% 
+  ## convert the dataset from wide to long
+  pivot_longer(., cols = 5:ncol(death), names_to = "Date", values_to = "Death") %>% 
+  ## Convert the date column to a date format
+  mutate(Date = mdy(Date)) %>% 
+  rename(
+    State = `Province/State`,
+    Country = `Country/Region`
+  ) %>% 
+  group_by(Country, State) %>% 
+  arrange(Date) %>% 
+  mutate(Death_day = Death - lag(Death, default = 0),
+         Continent = coords2continent(data.frame(lon=c(Long), lat=c(Lat)))) %>%
+  ungroup() %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(
+    Continent = if_else(Country=="Australia","Australia",Continent),
+    Continent = if_else(Country=="Canada","North America",Continent),
+    Continent = if_else(Country=="China","Asia",Continent),
+    Continent = if_else(Country=="Denmark","Europe",Continent),
+    Continent = if_else(Country=="France","Europe",Continent),
+    Continent = if_else(Country=="Netherlands","Europe",Continent),
+    Continent = if_else(Country=="United Kingdom","Europe",Continent),
+    Continent = if_else(Country=="US","North America",Continent),
+    Continent = if_else(Country=="Monaco","Europe",Continent),
+    Continent = if_else(Country=="Philippines","Asia",Continent),
+    Continent = if_else(Country=="New Zealand","Europe",Continent),
+    Continent = if_else(Country=="Saint Vincent and the Grenadine","North America",Continent)
+  ) %>%
+  select(Continent, State, Country, Lat, Long, Date, Death, Death_day) %>% 
+  arrange(State, Continent, Country, Date) %>% 
+  ungroup() %>% 
+  data.frame()
+
+recovered <- recovered %>% 
+  ## convert the dataset from wide to long
+  pivot_longer(., cols = 5:ncol(recovered), names_to = "Date", values_to = "Recovered") %>% 
+  ## Convert the date column to a date format
+  mutate(Date = mdy(Date)) %>% 
+  rename(
+    State = `Province/State`,
+    Country = `Country/Region`
+  ) %>% 
+  group_by(Country, State) %>% 
+  arrange(Date) %>% 
+  mutate(Recovered_day = Recovered - lag(Recovered, default = 0),
+         Continent = coords2continent(data.frame(lon=c(Long), lat=c(Lat)))) %>%
+  ungroup() %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(
+    Continent = if_else(Country=="Australia","Australia",Continent),
+    Continent = if_else(Country=="Canada","North America",Continent),
+    Continent = if_else(Country=="China","Asia",Continent),
+    Continent = if_else(Country=="Denmark","Europe",Continent),
+    Continent = if_else(Country=="France","Europe",Continent),
+    Continent = if_else(Country=="Netherlands","Europe",Continent),
+    Continent = if_else(Country=="United Kingdom","Europe",Continent),
+    Continent = if_else(Country=="US","North America",Continent),
+    Continent = if_else(Country=="Monaco","Europe",Continent),
+    Continent = if_else(Country=="Philippines","Asia",Continent),
+    Continent = if_else(Country=="New Zealand","Europe",Continent),
+    Continent = if_else(Country=="Saint Vincent and the Grenadine","North America",Continent)
+  ) %>%
+  select(Continent, State, Country, Lat, Long, Date, Recovered, Recovered_day) %>% 
+  arrange(State, Country, Date) %>% 
+  ungroup() %>% 
+  data.frame()
+
+active <- confirmed %>% 
+  select(-Confirmed_day) %>% 
+  left_join(death[, c("Country","Date","Lat","Long","Death")], 
+            by=c("Country"="Country","Date"="Date","Lat"="Lat","Long"="Long")) %>% 
+  left_join(recovered[, c("Country","Date","Lat","Long","Recovered")], 
+            by=c("Country"="Country","Date"="Date","Lat"="Lat","Long"="Long")) %>% 
+  mutate(
+    Active = Confirmed - (Death + Recovered)
+  ) %>% 
+  group_by(Country, State) %>% 
+  arrange(Date) %>% 
+  mutate(Active_day = Active - lag(Active, default = 0)) %>% 
+  select(Continent, State, Country, Lat, Long, Date, Active, Active_day) %>% 
+  arrange(State, Country, Date) %>% 
+  ungroup() %>% 
+  data.frame()
+
+
+temperature_max <- temperature_max %>% 
+  ## convert the dataset from wide to long
+  pivot_longer(., cols = 5:ncol(temperature_max), names_to = "Date", values_to = "TempMax") %>% 
+  ## Convert the date column to a date format
+  mutate(Date = mdy(Date),
+         Continent = coords2continent(data.frame(lon=c(Long), lat=c(Lat)))) %>% 
+  rename(
+    State = `Province/State`,
+    Country = `Country/Region`
+  ) %>% 
+  ungroup() %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(
+    Continent = if_else(Country=="Australia","Australia",Continent),
+    Continent = if_else(Country=="Canada","North America",Continent),
+    Continent = if_else(Country=="China","Asia",Continent),
+    Continent = if_else(Country=="Denmark","Europe",Continent),
+    Continent = if_else(Country=="France","Europe",Continent),
+    Continent = if_else(Country=="Netherlands","Europe",Continent),
+    Continent = if_else(Country=="United Kingdom","Europe",Continent),
+    Continent = if_else(Country=="US","North America",Continent),
+    Continent = if_else(Country=="Monaco","Europe",Continent),
+    Continent = if_else(Country=="Philippines","Asia",Continent),
+    Continent = if_else(Country=="New Zealand","Europe",Continent),
+    Continent = if_else(Country=="Saint Vincent and the Grenadine","North America",Continent)
+  ) %>%
+  select(Continent, State, Country, Lat, Long, Date, TempMax) %>% 
+  arrange(Continent, State, Country, Date) %>% 
+  data.frame()
+
+temperature_min <- temperature_min %>% 
+  ## convert the dataset from wide to long
+  pivot_longer(., cols = 5:ncol(temperature_min), names_to = "Date", values_to = "TempMin") %>% 
+  ## Convert the date column to a date format
+  mutate(Date = mdy(Date),
+         Continent = coords2continent(data.frame(lon=c(Long), lat=c(Lat)))) %>% 
+  rename(
+    State = `Province/State`,
+    Country = `Country/Region`
+  ) %>% 
+  ungroup() %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(
+    Continent = if_else(Country=="Australia","Australia",Continent),
+    Continent = if_else(Country=="Canada","North America",Continent),
+    Continent = if_else(Country=="China","Asia",Continent),
+    Continent = if_else(Country=="Denmark","Europe",Continent),
+    Continent = if_else(Country=="France","Europe",Continent),
+    Continent = if_else(Country=="Netherlands","Europe",Continent),
+    Continent = if_else(Country=="United Kingdom","Europe",Continent),
+    Continent = if_else(Country=="US","North America",Continent),
+    Continent = if_else(Country=="Monaco","Europe",Continent),
+    Continent = if_else(Country=="Philippines","Asia",Continent),
+    Continent = if_else(Country=="New Zealand","Europe",Continent),
+    Continent = if_else(Country=="Saint Vincent and the Grenadine","North America",Continent)
+  ) %>%
+  select(Continent, State, Country, Lat, Long, Date, TempMin) %>% 
+  arrange(Continent, State, Country, Date) %>% 
+  data.frame()
+
+#------------------ Parameters ------------------
+# Set colors
+# https://www.w3.org/TR/css-color-3/#svg-color
+confirmed_color <- "purple"
+active_color <- "#1f77b4"
+recovered_color <- "forestgreen"
+death_color <- "red"
+
+#------------------ Work Data ------------------
+dataset_evo <- active %>% 
+  left_join(confirmed %>% 
+              select(-c(Continent, State)), by=c("Date"="Date", "Country"="Country", "Lat"="Lat","Long"="Long")) %>% 
+  left_join(recovered %>% 
+              select(-c(Continent, State)), by=c("Date"="Date", "Country"="Country", "Lat"="Lat","Long"="Long")) %>% 
+  left_join(death %>% 
+              select(-c(Continent, State)), by=c("Date"="Date", "Country"="Country", "Lat"="Lat","Long"="Long")) %>% 
+  select(-c(Confirmed_day, Active_day, Recovered_day, Death_day)) %>% 
+  group_by(Continent, Country, Date) %>% 
+  summarise(Confirmed = sum(Confirmed), Active = sum(Active), Recovered = sum(Recovered), Death = sum(Death)) %>% 
+  ungroup()
+
+dataset_evo_daily <- dataset_evo %>% 
+  group_by(Country) %>% 
+  arrange(Date) 
+
+status <- dataset_evo %>% 
+  filter(Date == max(Date)) %>% 
+  arrange(desc(Confirmed)) %>% 
+  mutate(Country = trimws(Country)) %>%
+  mutate(Country = factor(Country, levels = Country))
+
+```
+
+Summary
+=======================================================================
+Row
+-----------------------------------------------------------------------
+
+### confirmed {.value-box}
+
+```{r}
+
+valueBox(value = paste(format(sum(status$Confirmed), big.mark = ","), "", sep = " "), 
+         caption = "Total Confirmed Cases", 
+         icon = "fas fa-user-md", 
+         color = confirmed_color)
+```
+
+
+### active {.value-box}
+
+```{r}
+valueBox(value = paste(format(sum(status$Active, na.rm = TRUE), big.mark = ","), " (",
+                       round(100 * sum(status$Active, na.rm = TRUE) / sum(status$Confirmed), 1), 
+                       "%)", sep = ""), 
+         caption = "Active Cases", icon = "fas fa-ambulance", 
+         color = active_color)
+```
+
+### recovered {.value-box}
+
+```{r}
+valueBox(value = paste(format(sum(status$Recovered, na.rm = TRUE), big.mark = ","), " (",
+                       round(100 * sum(status$Recovered, na.rm = TRUE) / sum(status$Confirmed), 1), 
+                       "%)", sep = ""), 
+         caption = "Recovered Cases", icon = "fas fa-heartbeat", 
+         color = recovered_color)
+```
+
+### death {.value-box}
+
+```{r}
+
+valueBox(value = paste(format(sum(status$Death, na.rm = TRUE), big.mark = ","), " (",
+                       round(100 * sum(status$Death, na.rm = TRUE) / sum(status$Confirmed), 1), 
+                       "%)", sep = ""),
+         caption = "Death Cases", 
+         icon = "fas fa-heart-broken", 
+         color = death_color)
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Cases Distribution by Type (Top 25 Countries)
+
+```{r daily_summary}
+
+
+plotly::plot_ly(data = status[1:30,], 
+                x = ~ Country, 
+                y = ~ Active, 
+                type = "bar", 
+                name = "Active",
+                marker = list(color = active_color)) %>%
+  plotly::add_trace(y = ~ Recovered, 
+                    name = "Recovered",
+                    marker = list(color = recovered_color)) %>%
+  plotly::add_trace(y = ~ Death, 
+                    name = "Death",
+                    marker = list(color = death_color)) %>%
+  plotly::layout(barmode = 'stack',
+                 yaxis = list(title = "Total Cases (log scaled)",
+                              type = "log"),
+                 xaxis = list(title = ""),
+                 hovermode = "compare",
+                  margin =  list(
+                   b = 10,
+                   t = 10,
+                   pad = 2
+                 ))
+
+```
+
+Row {data-width=400}
+-----------------------------------------------------------------------
+
+
+### Daily Cumulative Cases by Type
+    
+```{r}
+
+dataset_evo_daily %>% 
+  group_by(Date) %>% 
+  summarise(active = sum(Active), recovered = sum(Recovered), death = sum(Death)) %>%
+  plotly::plot_ly() %>%
+  plotly::add_trace(x = ~ Date,
+                    y = ~ active,
+                    type = "scatter",
+                    mode = "lines+markers",
+                    name = "Active",
+                    line = list(color = active_color),
+                    marker = list(color = active_color)) %>%
+  plotly::add_trace(x = ~ Date,
+                    y = ~ recovered,
+                    type = "scatter",
+                    mode = "lines+markers",
+                    name = "Recovered",
+                    line = list(color = recovered_color),
+                    marker = list(color = recovered_color)) %>%
+  plotly::add_trace(x = ~ Date,
+                    y = ~ death,
+                    type = "scatter",
+                    mode = 'lines+markers',
+                    name = "Death",
+                    line = list(color = death_color),
+                    marker = list(color = death_color)) %>%
+  plotly::layout(title = "",
+                 yaxis = list(title = "Cumulative Number of Cases"),
+                 xaxis = list(title = "Date"),
+                 legend = list(x = 0.1, y = 0.9),
+                 hovermode = "compare")
+  
+
+```
+
+
+### Recovery and Death Rates by Country
+    
+```{r}
+
+summary <- dataset_evo %>% 
+  filter(Date == max(Date)) %>%
+  mutate(recover_rate = Recovered/Confirmed,
+         death_rate = Death/Confirmed)  
+summary %>%
+  DT::datatable(rownames = FALSE,
+            colnames = c("Country", "Confirmed", "Recovered", "Death", "Recovery Rate", "Death Rate"),
+            options = list(pageLength = nrow(summary), dom = 'tip')) %>%
+  DT::formatPercentage("recover_rate", 2) %>%
+  DT::formatPercentage("death_rate", 2) 
+```
+
+World
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Evolution of Infected Cases by Continent
+
+```{r}
+confirmed %>% 
+  filter(!is.na(Continent)) %>% 
+  group_by(Date, Continent) %>% 
+  summarise(confirmed_total = sum(Confirmed), confirmed_day = sum(Confirmed_day)) %>% 
+  ungroup() %>% 
+  reshape2::dcast(Date ~ Continent, value.var = c("confirmed_total")) %>% 
+  plot_ly() %>% 
+  add_trace(x=~Date, y=~Asia, name = "Asia", type="scatter", mode="lines", line = list(color = 'rgb(222, 41, 16)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Europe, name = "Europe", type="scatter", mode="lines", line = list(color = 'rgb(0, 51, 153)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Australia, name = "Australia", type="scatter", mode="lines", line = list(color = 'rgb(255,205,0)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`North America`, name = "North America", type="scatter", mode="lines", line = list(color = 'rgb(60,59,110)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`South America`, name = "South America", type="scatter", mode="lines", line = list(color = 'rgb(0,156,59)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Africa, name = "Africa", type="scatter", mode="lines", line = list(color = 'rgb(0,0,0)', width = 4)) %>% 
+  layout(xaxis = list(title = "Date"),
+         yaxis = list(title = "Number of Infected Cases"),
+         title = "Evolution of Number of People Infected with Covid-19")
+```
+
+
+### Evolution of Active Cases by Continent
+
+```{r}
+
+active %>% 
+  filter(!is.na(Continent)) %>% 
+  group_by(Date, Continent) %>% 
+  summarise(active_total = sum(Active), active_day = sum(Active_day)) %>% 
+  ungroup() %>% 
+  reshape2::dcast(Date ~ Continent, value.var = c("active_total")) %>% 
+  plot_ly() %>% 
+  add_trace(x=~Date, y=~Asia, name = "Asia", type="scatter", mode="lines", line = list(color = 'rgb(222, 41, 16)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Europe, name = "Europe", type="scatter", mode="lines", line = list(color = 'rgb(0, 51, 153)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Australia, name = "Australia", type="scatter", mode="lines", line = list(color = 'rgb(255,205,0)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`North America`, name = "North America", type="scatter", mode="lines", line = list(color = 'rgb(60,59,110)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`South America`, name = "South America", type="scatter", mode="lines", line = list(color = 'rgb(0,156,59)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Africa, name = "Africa", type="scatter", mode="lines", line = list(color = 'rgb(0,0,0)', width = 4)) %>% 
+  layout(xaxis = list(title = "Date"),
+         yaxis = list(title = "Number of Active Cases"),
+         title = "Evolution of Number of Active Cases of People with Covid-19")
+
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Evolution of Recovereds by Continent
+
+```{r}
+
+recovered %>% 
+  filter(!is.na(Continent)) %>% 
+  group_by(Date, Continent) %>% 
+  summarise(recovered_total = sum(Recovered), recovered_day = sum(Recovered_day)) %>% 
+  ungroup() %>% 
+  reshape2::dcast(Date ~ Continent, value.var = c("recovered_total")) %>% 
+  plot_ly() %>% 
+  add_trace(x=~Date, y=~Asia, name = "Asia", type="scatter", mode="lines", line = list(color = 'rgb(222, 41, 16)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Europe, name = "Europe", type="scatter", mode="lines", line = list(color = 'rgb(0, 51, 153)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Australia, name = "Australia", type="scatter", mode="lines", line = list(color = 'rgb(255,205,0)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`North America`, name = "North America", type="scatter", mode="lines", line = list(color = 'rgb(60,59,110)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`South America`, name = "South America", type="scatter", mode="lines", line = list(color = 'rgb(0,156,59)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Africa, name = "Africa", type="scatter", mode="lines", line = list(color = 'rgb(0,0,0)', width = 4)) %>% 
+  layout(xaxis = list(title = "Date"),
+         yaxis = list(title = "Number of Recovered Cases"),
+         title = "Evolution of Number of Recovered Cases of People with Covid-19")
+
+```
+
+
+
+### Evolution of Deaths by Continent
+
+```{r}
+death %>% 
+  filter(!is.na(Continent)) %>% 
+  group_by(Date, Continent) %>% 
+  summarise(death_total = sum(Death), death_day = sum(Death_day)) %>% 
+  ungroup() %>% 
+  reshape2::dcast(Date ~ Continent, value.var = c("death_total")) %>% 
+  plot_ly() %>% 
+  add_trace(x=~Date, y=~Asia, name = "Asia", type="scatter", mode="lines", line = list(color = 'rgb(222, 41, 16)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Europe, name = "Europe", type="scatter", mode="lines", line = list(color = 'rgb(0, 51, 153)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Australia, name = "Australia", type="scatter", mode="lines", line = list(color = 'rgb(255,205,0)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`North America`, name = "North America", type="scatter", mode="lines", line = list(color = 'rgb(60,59,110)', width = 4)) %>% 
+  add_trace(x=~Date, y=~`South America`, name = "South America", type="scatter", mode="lines", line = list(color = 'rgb(0,156,59)', width = 4)) %>% 
+  add_trace(x=~Date, y=~Africa, name = "Africa", type="scatter", mode="lines", line = list(color = 'rgb(0,0,0)', width = 4)) %>% 
+  layout(xaxis = list(title = "Date"),
+         yaxis = list(title = "Number of Deaths"),
+         title = "Evolution of Number of Deaths by Covid-19")
+```
+
+Europe
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Covid-19: Distribution in Europe
+
+```{r}
+dataset_evo %>% 
+  filter(Continent=="Europe") %>% 
+  group_by(Date) %>% 
+  filter(Date > as.Date("2020-02-20")) %>% 
+  summarise(Active = sum(Active), Recovered = sum(Recovered), Death = sum(Death)) %>% 
+  plot_ly(
+        x = ~ Date,
+        y = ~ Active, 
+        name = 'Active', 
+        fillcolor = '#1f77b4',
+        type = 'scatter',
+        mode = 'none', 
+        stackgroup = 'one') %>%
+  add_trace( 
+    y = ~ Death, 
+             name = "Death",
+             fillcolor = '#E41317') %>%
+  add_trace(
+    y = ~ Recovered, 
+            name = 'Recovered', 
+            fillcolor = 'forestgreen') %>%
+  layout(title = "Italy - Distribution of Covid19 Cases",
+         legend = list(x = 0.1, y = 0.9),
+         yaxis = list(title = "Number of Cases"))
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Grotwh
+
+```{r}
+
+## Top_15 europe
+
+top15 <- confirmed %>% 
+  filter(Date == max(Date),
+         Continent == "Europe") %>%
+  group_by(Country) %>% 
+  summarise(Confirmed = sum(Confirmed)) %>% 
+  ungroup() %>% 
+  arrange(desc(Confirmed)) %>% 
+  filter(row_number()<=15)
+
+confirmed %>% 
+  filter(!Confirmed==0,
+         Continent == "Europe",
+         Country %in% top15$Country) %>%
+  group_by(Country, Date) %>% 
+  summarise(Confirmed = sum(Confirmed), Confirmed_day = sum(Confirmed_day)) %>% 
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number(),
+         day_after_10 = if_else(Confirmed>10,1,0)) %>%
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after_10 = cumsum(day_after_10),
+         Confirmed = if_else((Country=="United Kingdom") & (Date == as.Date("2020-03-15")),1391,Confirmed)) %>%
+  plot_ly() %>% 
+  add_trace(x=~day_after, y=~Confirmed, color=~Country, type = "scatter", mode = "lines") %>% 
+  layout(xaxis = list(title = "Number of Days after first Confirmated Case"),
+         yaxis = list(title = "Number of Cases"),
+         title = "Evolution of Confirmed Cases after the first Confirmed Case")
+```
+
+
+### Log10
+
+```{r}
+
+top15 <- confirmed %>% 
+  filter(Date == max(Date),
+         Continent == "Europe") %>%
+  group_by(Country) %>% 
+  summarise(Confirmed = sum(Confirmed)) %>% 
+  ungroup() %>% 
+  arrange(desc(Confirmed)) %>% 
+  filter(row_number()<=15)
+
+confirmed %>% 
+  filter(!Confirmed==0,
+         Continent == "Europe",
+         Country %in% top15$Country) %>%
+  group_by(Country, Date) %>% 
+  summarise(Confirmed = sum(Confirmed), Confirmed_day = sum(Confirmed_day)) %>% 
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number(),
+         day_after_10 = if_else(Confirmed>10,1,0)) %>%
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after_10 = cumsum(day_after_10),
+         Confirmed = if_else((Country=="United Kingdom") & (Date == as.Date("2020-03-15")),1391,Confirmed)) %>%
+  mutate(Confirmed = log10(Confirmed)) %>% 
+  filter(day_after_10 >0 ) %>% 
+  plot_ly() %>% 
+  add_trace(x=~day_after_10, y=~Confirmed, color=~Country, type = "scatter", mode = "lines") %>% 
+  layout(xaxis = list(title = "Number of Days after 10th Case"),
+         yaxis = list(title = "Number of Cases (logaritmic scale)"),
+         title = "Evolution of Confirmed Cases after the 10th Confirmed Case")
+
+```
+
+
+Exponential Forecasting
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Evolution and Prediction of exponential growth of infected cases in March 18
+
+```{r}
+today_date <- as.Date("2020-03-18")
+
+
+### confirmed since day one
+
+evolution_of_confirmed <- confirmed %>% 
+  filter(!Confirmed==0) 
+
+countries <- c("China","Italy","Spain","Portugal","US", "United Kingdom", "Germany", "France")
+
+evolution_of_confirmed_v2 <- evolution_of_confirmed %>% 
+  group_by(Country, Date) %>% 
+  summarise(Confirmed = sum(Confirmed), Confirmed_day = sum(Confirmed_day)) %>% 
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number(),
+         day_after_10 = if_else(Confirmed>10,1,0)) %>%
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after_10 = cumsum(day_after_10),
+         Confirmed = if_else((Country=="United Kingdom") & (Date == as.Date("2020-03-15")),1391,Confirmed))
+
+
+# predictions after march 18 and 
+
+today_cases <- evolution_of_confirmed_v2 %>% 
+  filter(day_after_10 > 0 & !(Country %in% c("Portugal", "France", "US", "Germany"))) %>%
+  bind_rows(evolution_of_confirmed_v2 %>% 
+              filter(Country == "Portugal")) %>% 
+  bind_rows(evolution_of_confirmed_v2 %>% 
+              filter(Date > as.Date("2020-02-23") & Country %in% c("France", "US", "Germany"))) %>% 
+  filter(Country %in% countries,
+         Date < today_date) %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number()) %>% 
+  ungroup() %>% 
+  select(Country, Date, Confirmed)
+
+
+n_days <- 3
+
+for(i in 1:length(countries)) {
+  country_selected <- countries[i]
+
+  for(j in 1:n_days) {
+  country_row <- today_cases %>% 
+    filter(Country == country_selected & Date > today_date) %>% 
+    tibble::add_row(Country = country_selected, Date = today_date+(j-1), Confirmed = NA)
+  
+  if(j == 1) country_test <- country_row else country_test <- country_test %>% bind_rows(country_row)
+  }
+  country_test <- country_test %>% 
+    bind_rows(today_cases %>% 
+                filter(Country == country_selected))
+  
+  if(i == 1 ) today_cases_v2 <- country_test else today_cases_v2 <- today_cases_v2 %>% bind_rows(country_test) %>% arrange(Country, Date)
+}
+
+## add day_after column (again)
+today_cases_v3 <- today_cases_v2 %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number()) %>% 
+  na_if(0) %>% 
+  filter(Country != "China")
+
+### for each country create an exponential model
+
+countries_exp <-  unique(today_cases_v3$Country)
+
+for(n in 1:length(countries_exp)) {
+
+  
+  train_data <- today_cases_v3 %>% 
+    filter(Country == countries_exp[n])
+
+exponential.model <- lm(log(Confirmed) ~ day_after, data = train_data)
+
+predicted_data <- data.frame(exp(predict(object = exponential.model, newdata = train_data))) %>%
+  rename(predict = 1) %>% 
+  bind_cols(train_data) %>% 
+  select(Country, Date, day_after, Confirmed, predict) %>% 
+  mutate(predict = floor(predict))  
+
+if(n == 1) predicted_cases <- predicted_data else predicted_cases <- predicted_cases %>% bind_rows(predicted_data)
+}
+
+predicted_cases %>% 
+  select(-c(day_after)) %>% 
+  bind_rows(confirmed %>%
+              select(Country, Date, Confirmed) %>%
+              group_by(Country, Date) %>%
+              summarise(Confirmed = sum(Confirmed)) %>%
+              ungroup() %>%
+              filter(Country %in% countries,
+                     Date >= today_date))  %>%
+  mutate(Confirmed = replace_na(Confirmed, 0),
+         predict = replace_na(predict, 0)) %>%
+  group_by(Country, Date) %>%
+  summarise(Confirmed = sum(Confirmed), predict = sum(predict)) %>% 
+  data.frame() %>% 
+  reshape(direction  = "wide", idvar="Date", timevar="Country") %>% 
+  arrange(Date) %>% 
+  plot_ly() %>% 
+  add_trace(x=~Date, y=~predict.Portugal, name = "Prediction Portugal", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0, 255, 0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Portugal, name = "Real Portugal", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0, 255, 0)', width = 2.5)) %>%
+  add_trace(x=~Date, y=~predict.Spain, name = "Prediction Spain", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255,215,0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Spain, name = "Real Spain", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255,215,0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.France, name = "Prediction France", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255, 0, 0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.France, name = "Real France", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255, 0, 0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.Germany, name = "Prediction Germany", type = 'scatter', mode = 'lines', line = list(color = 'rgb(139,69,19)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Germany, name = "Real Germany", type = 'scatter', mode = 'lines', line = list(color = 'rgb(139,69,19)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.Italy, name = "Prediction Italy", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0,100,0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Italy, name = "Real Italy", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0,100,0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~`predict.United Kingdom`, name = "Prediction UK", type = 'scatter', mode = 'lines', line = list(color = 'rgb(25,25,112)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~`Confirmed.United Kingdom`, name = "Real UK", type = 'scatter', mode = 'lines', line = list(color = 'rgb(25,25,112)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.US, name = "Prediction USA", type = 'scatter', mode = 'lines', line = list(color = 'rgb(105,105,105)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.US, name = "Real USA", type = 'scatter', mode = 'lines', line = list(color = 'rgb(105,105,105)', width = 2.5)) %>% 
+  layout(xaxis = list(title = "Date"),
+          yaxis = list(title = "Number of Cases"),
+          title = "Prediction of future cases (using exponential curve) \nPrediction between March 18 to March 20")
+```
+
+
+
+Row
+-----------------------------------------------------------------------
+
+### Evolution and Prediction of exponential growth of infected cases in March 21
+
+```{r}
+
+today_date <- as.Date("2020-03-21")
+
+
+### confirmed since day one
+
+evolution_of_confirmed <- confirmed %>% 
+  filter(!Confirmed==0) 
+
+countries <- c("China","Italy","Spain","Portugal","US", "United Kingdom", "Germany", "France")
+
+evolution_of_confirmed_v2 <- evolution_of_confirmed %>% 
+  group_by(Country, Date) %>% 
+  summarise(Confirmed = sum(Confirmed), Confirmed_day = sum(Confirmed_day)) %>% 
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number(),
+         day_after_10 = if_else(Confirmed>10,1,0)) %>%
+  ungroup() %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after_10 = cumsum(day_after_10),
+         Confirmed = if_else((Country=="United Kingdom") & (Date == as.Date("2020-03-15")),1391,Confirmed))
+
+
+# predictions after march 21 and 
+
+today_cases <- evolution_of_confirmed_v2 %>% 
+  filter(day_after_10 > 0 & !(Country %in% c("Portugal", "France", "US", "Germany"))) %>%
+  bind_rows(evolution_of_confirmed_v2 %>% 
+              filter(Country == "Portugal")) %>% 
+  bind_rows(evolution_of_confirmed_v2 %>% 
+              filter(Date > as.Date("2020-02-23") & Country %in% c("France", "US", "Germany"))) %>% 
+  filter(Country %in% countries,
+         Date < today_date) %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number()) %>% 
+  ungroup() %>% 
+  select(Country, Date, Confirmed)
+
+
+n_days <- 3
+
+for(i in 1:length(countries)) {
+  country_selected <- countries[i]
+
+  for(j in 1:n_days) {
+  country_row <- today_cases %>% 
+    filter(Country == country_selected & Date > today_date) %>% 
+    tibble::add_row(Country = country_selected, Date = today_date+(j-1), Confirmed = NA)
+  
+  if(j == 1) country_test <- country_row else country_test <- country_test %>% bind_rows(country_row)
+  }
+  country_test <- country_test %>% 
+    bind_rows(today_cases %>% 
+                filter(Country == country_selected))
+  
+  if(i == 1 ) today_cases_v2 <- country_test else today_cases_v2 <- today_cases_v2 %>% bind_rows(country_test) %>% arrange(Country, Date)
+}
+
+## add day_after column (again)
+today_cases_v3 <- today_cases_v2 %>% 
+  group_by(Country) %>% 
+  arrange(Date) %>% 
+  mutate(day_after = row_number()) %>% 
+  na_if(0) %>% 
+  filter(Country != "China")
+
+### for each country create an exponential model
+
+countries_exp <-  unique(today_cases_v3$Country)
+
+for(n in 1:length(countries_exp)) {
+
+  
+  train_data <- today_cases_v3 %>% 
+    filter(Country == countries_exp[n])
+
+exponential.model <- lm(log(Confirmed) ~ day_after, data = train_data)
+
+predicted_data <- data.frame(exp(predict(object = exponential.model, newdata = train_data))) %>%
+  rename(predict = 1) %>% 
+  bind_cols(train_data) %>% 
+  select(Country, Date, day_after, Confirmed, predict) %>% 
+  mutate(predict = floor(predict))
+
+if(n == 1) predicted_cases <- predicted_data else predicted_cases <- predicted_cases %>% bind_rows(predicted_data)
+}
+
+
+predicted_cases %>% 
+  select(-c(day_after)) %>% 
+  bind_rows(confirmed %>%
+              select(Country, Date, Confirmed) %>%
+              group_by(Country, Date) %>%
+              summarise(Confirmed = sum(Confirmed)) %>%
+              ungroup() %>%
+              filter(Country %in% countries,
+                     Date >= today_date))  %>%
+  group_by(Country, Date) %>%
+  summarise(Confirmed = sum(Confirmed), predict = sum(predict)) %>% 
+  data.frame() %>% 
+  reshape(direction  = "wide", idvar="Date", timevar="Country") %>% 
+  arrange(Date) %>% 
+  plot_ly() %>% 
+  add_trace(x=~Date, y=~predict.Portugal, name = "Prediction Portugal", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0, 255, 0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Portugal, name = "Real Portugal", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0, 255, 0)', width = 2.5)) %>%
+  add_trace(x=~Date, y=~predict.Spain, name = "Prediction Spain", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255,215,0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Spain, name = "Real Spain", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255,215,0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.France, name = "Prediction France", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255, 0, 0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.France, name = "Real France", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255, 0, 0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.Germany, name = "Prediction Germany", type = 'scatter', mode = 'lines', line = list(color = 'rgb(139,69,19)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Germany, name = "Real Germany", type = 'scatter', mode = 'lines', line = list(color = 'rgb(139,69,19)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.Italy, name = "Prediction Italy", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0,100,0)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.Italy, name = "Real Italy", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0,100,0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~`predict.United Kingdom`, name = "Prediction UK", type = 'scatter', mode = 'lines', line = list(color = 'rgb(25,25,112)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~`Confirmed.United Kingdom`, name = "Real UK", type = 'scatter', mode = 'lines', line = list(color = 'rgb(25,25,112)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~predict.US, name = "Prediction USA", type = 'scatter', mode = 'lines', line = list(color = 'rgb(105,105,105)', width = 2.5, dash = 'dot')) %>% 
+  add_trace(x=~Date, y=~Confirmed.US, name = "Real USA", type = 'scatter', mode = 'lines', line = list(color = 'rgb(105,105,105)', width = 2.5)) %>% 
+  layout(xaxis = list(title = "Date"),
+          yaxis = list(title = "Number of Cases"),
+          title = "Prediction of future cases (using exponential curve) \nPrediction between March 20 to March 22")
+
+```
+
+
+Lockdown Countries
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### See the diference when the Lockdown measures taken effect
+
+```{r}
+
+study_countries <- c("Portugal", "France", "Spain", "Italy", "China")
+
+
+confirmed %>% 
+  filter(Country %in% study_countries) %>% 
+  group_by(Country, Date) %>% 
+  summarise(Confirmed = sum(Confirmed)) %>% 
+  data.frame() %>% 
+  reshape(direction  = "wide", idvar="Date", timevar="Country") %>% 
+  plot_ly() %>% 
+  add_trace(x=~Date, y=~Confirmed.Portugal, name = "Portugal", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0,255,0)', width = 2.5)) %>%
+  add_trace(x=~Date, y=~Confirmed.Spain, name = "Spain", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255,215,0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~Confirmed.France, name = "France", type = 'scatter', mode = 'lines', line = list(color = 'rgb(255,0,0)', width = 2.5)) %>% 
+  add_trace(x=~Date, y=~Confirmed.Italy, name = "Italy", type = 'scatter', mode = 'lines', line = list(color = 'rgb(0,100,0)', width = 2.5)) %>% 
+    add_trace(x=~Date, y=~Confirmed.China, name = "China", type = 'scatter', mode = 'lines', line = list(color = 'rgb((222,41,16))', width = 2.5)) %>% 
+  add_annotations(x = as.Date("2020-01-24"),
+                          y = 920,
+                          text = paste("Hubei", 
+                                       "<br>", 
+                                       "Lockdown"),
+                          xref = "x",
+                          yref = "y",
+                          arrowhead = 5,
+                          arrowhead = 3,
+                          arrowsize = 1,
+                          showarrow = TRUE,
+                          ax = 10,
+                          ay = -90) %>% 
+    add_annotations(x = as.Date("2020-03-09"),
+                          y = 9172,
+                          text = paste("Italy", 
+                                       "<br>", 
+                                       "Lockdown"),
+                          xref = "x",
+                          yref = "y",
+                          arrowhead = 5,
+                          arrowhead = 3,
+                          arrowsize = 1,
+                          showarrow = TRUE,
+                          ax = -20,
+                          ay = -50) %>% 
+    add_annotations(x = as.Date("2020-03-14"),
+                          y = 6391,
+                          text = paste("Spain", 
+                                       "<br>", 
+                                       "Lockdown"),
+                          xref = "x",
+                          yref = "y",
+                          arrowhead = 5,
+                          arrowhead = 3,
+                          arrowsize = 1,
+                          showarrow = TRUE,
+                          ax = -35,
+                          ay = -60) %>% 
+      add_annotations(x = as.Date("2020-03-17"),
+                          y = 7699,
+                          text = paste("France", 
+                                       "<br>", 
+                                       "Lockdown"),
+                          xref = "x",
+                          yref = "y",
+                          arrowhead = 5,
+                          arrowhead = 3,
+                          arrowsize = 1,
+                          showarrow = TRUE,
+                          ax = -20,
+                          ay = -50) %>%
+        add_annotations(x = as.Date("2020-03-19"),
+                          y = 785,
+                          text = paste("Portugal", 
+                                       "<br>", 
+                                       "Emergency State"),
+                          xref = "x",
+                          yref = "y",
+                          arrowhead = 5,
+                          arrowhead = 3,
+                          arrowsize = 1,
+                          showarrow = TRUE,
+                          ax = -20,
+                          ay = -40)
+  
+  
+  
+```
+
+
+Temperature Correlation
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### See the relation between the average weekly temperature and the Evolution of cases 
+```{r}
+### temperature max and evolution
+
+top30 <- confirmed %>%
+  group_by(Country) %>% 
+  summarise(all_cases = sum(Confirmed_day)) %>% 
+  arrange(desc(all_cases)) %>% 
+  filter(row_number()<=30)
+
+mean_temperature <- temperature_max %>% 
+  filter(Country %in% top30$Country) %>%
+  group_by(Country, Continent, Date) %>% 
+  summarise(temp_max = mean(TempMax)) %>% 
+  ungroup() %>% 
+  mutate(Week = floor_date(Date, unit="week")) %>% 
+  group_by(Country, Continent, Week) %>% 
+  summarise(mean_temp = mean(temp_max))
+  
+weekly_evolution <- confirmed %>% 
+  filter(Country %in% top30$Country) %>% 
+  group_by(Country, Continent, Date) %>% 
+  summarise(Confirmed_cases = sum(Confirmed_day)) %>% 
+  ungroup() %>% 
+  mutate(Week = floor_date(Date, unit="week")) %>% 
+  group_by(Country, Continent, Week) %>% 
+  summarise(cases = sum(Confirmed_cases)) %>% 
+  ungroup() %>% 
+  group_by(Country, Continent) %>% 
+  arrange(Week) %>% 
+  mutate(evolution = 100*((cases-lag(cases, default = 0))/lag(cases, default = 0))) %>% 
+  filter(!is.nan(evolution),
+         !is.infinite(evolution),
+         evolution > 0)
+  
+## join data and plot
+
+weekly_evolution %>% 
+  left_join(mean_temperature, by=c("Week"="Week","Country"="Country", "Continent"="Continent")) %>% 
+  ungroup() %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(
+    evolution = round(evolution,2),
+    text = paste("Continent: ", Continent, 
+                 "\nCountry: ", Country, 
+                 "\nWeek: ", Week, 
+                 "\nNew Cases: ", cases, 
+                 "\nEvolution (%): ", evolution, sep="")) %>% 
+  plot_ly(x=~mean_temp, y=~evolution, color=~Continent, text =~text, type = 'scatter', mode = 'markers') %>% 
+  layout(xaxis = list(title = "Average Temperature (ºC)"),
+         yaxis = list(title = "Variation of Infected (%)"),
+         title = "Distribution of Evolution of Infected Cases with the Average Temperature (ºC)")
+```
+
+
+About
+=======================================================================
+
+**The Coronavirus Dashboard**
+
+This Coronavirus dashboard provides an overview of the 2019 Novel Coronavirus COVID-19 (2019-nCoV) epidemic with information focused on the evolution of this pandemic in the European Continent with some studies about the exponential evolution of Infected cases. This dashboard is built with R using the Rmakrdown framework and can easily reproduce by others. The code behind the dashboard available [here](https://github.com/joaosilvagmr/covid19_dashboard)
+
+**Data**
+
+The data and dashboard is refreshed on a daily bases. The raw data pulled from the Johns Hopkins University Center for Systems Science and Engineering (JHU CCSE) Coronavirus [repository](https://github.com/CSSEGISandData/COVID-19)
+The raw tempoerature data is pulled from the imants [repository](https://github.com/imantsm/COVID-19) with obtained the data from the [Dark Sky Api](https://darksky.net/dev)
+
+
+
+
+**Packages**
+
+* Dashboard interface - the [flexdashboard](https://rmarkdown.rstudio.com/flexdashboard/) package.
+* Visualization - the [plotly](https://plot.ly/r/) package for the plots
+* Read Data - the [readr](https://readr.tidyverse.org/)
+* Data manipulation - [dplyr](https://dplyr.tidyverse.org/), [tidyr](https://tidyr.tidyverse.org/), [lubridate](https://lubridate.tidyverse.org/)
+* To obtain the continents information - [sp](https://github.com/edzer/sp/) [rworldmap](https://github.com/AndySouth/rworldmap/)
+* Tables - the [DT](https://rstudio.github.io/DT/) package
+
+**Deployment and reproducibly**
+
+The dashboard was deployed to Github docs. If you wish to deploy and/or modify the dashboard on your Github account, you can apply the following steps:
+
+* Fork the dashboard [repository](https://github.com/joaosilvagmr/covid19_dashboard), or
+* Clone it and push it to your Github package
+* Here some general guidance about deployment of flexdashboard on Github page - [link](https://github.com/pbatey/flexdashboard-example)
+
+For any question or feedback, you can either open an [issue](https://github.com/joaosilvagmr/covid19_dashboard/issues).
+
+**Contribution**
+
+The base code for this dashboard was provided by Rami Krispin, principally the first page, where the code is written by him.
+You can visit the diverse Coronavirus packages that he is developing.
+
+* Package with [Coronavirus Dataset](https://github.com/RamiKrispin/coronavirus)
+* Package with [Coronavirus Italy](https://github.com/RamiKrispin/covid19Italy)
+* Code for the [Coronavirus Dashboard](https://github.com/RamiKrispin/coronavirus_dashboard)
+
+Thanks Rami for the work developed! 
+
