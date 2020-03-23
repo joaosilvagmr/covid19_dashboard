@@ -763,7 +763,8 @@ predicted_cases %>%
               summarise(Confirmed = sum(Confirmed)) %>%
               ungroup() %>%
               filter(Country %in% countries,
-                     Date >= today_date))  %>%
+                     Date >= today_date,
+                     Date < today_date+3))  %>%
   mutate(Confirmed = replace_na(Confirmed, 0),
          predict = replace_na(predict, 0)) %>%
   group_by(Country, Date) %>%
@@ -900,9 +901,11 @@ predicted_cases %>%
               ungroup() %>%
               filter(Country %in% countries,
                      Date >= today_date))  %>%
+  mutate(predict = replace_na(predict,0)) %>%
   group_by(Country, Date) %>%
   summarise(Confirmed = sum(Confirmed), predict = sum(predict)) %>% 
   data.frame() %>% 
+  ungroup() %>%
   reshape(direction  = "wide", idvar="Date", timevar="Country") %>% 
   arrange(Date) %>% 
   plot_ly() %>% 
